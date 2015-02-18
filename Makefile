@@ -1,7 +1,7 @@
 help:
 	@echo 'Usage: make (stability|threshold)'
 
-stability:
+stability: threshold
 	php src/stability.php
 .PHONY: stability
 

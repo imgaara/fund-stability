@@ -73,16 +73,8 @@ int main(int argc, char** argv) {
 
   const int base = minimum * power;
 
-  if (GetEnvironmentInteger("SHOW_PROBABILITY", 0)) {
-    for (int i = 0; i < probabilities.size(); i++) {
-      printf("%d\t%.8f\n", base + i, probabilities[i].real());
-    }
-  } else {
-    double sum = 0.0;
-    for (int i = 0; i < probabilities.size() && base + i < 0; i++) {
-      sum += probabilities[i].real();
-    }
-    printf("%.8f\n", abs(1 - sum));
+  for (int i = 0; i < probabilities.size(); i++) {
+    printf("%d\t%.8f\n", base + i, probabilities[i].real());
   }
 
   return 0;

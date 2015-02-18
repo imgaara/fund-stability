@@ -4,6 +4,7 @@ require_once(dirname(__FILE__) . '/../../fund/src/catalog.php');
 require_once(dirname(__FILE__) . '/../../fund/src/history.php');
 
 date_default_timezone_set('UTC');
+ini_set('memory_limit', '1G');
 
 define('DAY', 24 * 60 * 60);
 define('TMPFILE', tempnam('/tmp', 'fund'));
@@ -62,28 +63,50 @@ class Stability {
     }
     for ($date = $start_date; $date <= $end_date;
          $date = date('Y-m-d', strtotime($date) + 7 * DAY)) {
-      foreach (['1.0', '1.1', '1.2', '1.3'] as $ratio) {
-        $price_diffs = [];
-        for ($days_ago = 1; $days_ago <= 52 * 7; $days_ago++) {
-          $base_date = date('Y-m-d',
-                            strtotime($date) - $days_ago * DAY);
-          $past_date = date('Y-m-d',
-                            strtotime($date) - ($days_ago + 7) * DAY);
-          if (!isset($prices[$base_date]) || !isset($prices[$past_date])) {
-            fwrite(STDERR, "Error: start_date=$start_date, " .
-                           "past_date=$past_date\n");
-            exit(1);
-          }
-          $price_diffs[] = intval(round(
-              (log($prices[$base_date] / $prices[$past_date]) -
-               log(floatval($ratio)) / 52) * 10000));
+      $price_diffs = [];
+      for ($days_ago = 1; $days_ago <= 52 * 7; $days_ago++) {
+        $base_date = date('Y-m-d',
+                          strtotime($date) - $days_ago * DAY);
+        $past_date = date('Y-m-d',
+                          strtotime($date) - ($days_ago + 7) * DAY);
+        if (!isset($prices[$base_date]) || !isset($prices[$past_date])) {
+          fwrite(STDERR, "Error: start_date=$start_date, " .
+                         "past_date=$past_date\n");
+          exit(1);
         }
-        file_put_contents(TMPFILE,
-                          "52\n\n" . implode("\n", $price_diffs) . "\n");
-        $output = [];
-        exec('./bin/threshold < ' . TMPFILE, $output);
-        $data['stability'][$date]['ratio'][$ratio] =
-            floatval(implode("\n", $output));
+        $price_diffs[] = intval(round(
+            log($prices[$base_date] / $prices[$past_date]) * 10000));
+      }
+      file_put_contents(TMPFILE,
+                        "52\n\n" . implode("\n", $price_diffs) . "\n");
+      $output = [];
+      exec('./bin/threshold < ' . TMPFILE, $output);
+      $probabilities = [];
+      foreach (explode("\n", trim(implode("\n", $output))) as $line) {
+        list($shift, $probability) = explode("\t", $line, 2);
+        $shift = intval($shift);
+        $probability = floatval($probability);
+        $probabilities[$shift] = $probability;
+      }
+      foreach (['1.0', '1.1', '1.2', '1.3'] as $ratio) {
+        $sum = 0.0;
+        $log = intval(round(log(floatval($ratio)) * 10000));
+        foreach ($probabilities as $shift => $probability) {
+          if ($shift > $log) break;
+          $sum += $probability;
+        }
+        $data['stability'][$date]['ratio'][$ratio] = round(abs(1 - $sum), 4);
+      }
+      foreach (['0.50', '0.75', '0.90', '0.99'] as $threshold) {
+        $sum = 0.0;
+        foreach ($probabilities as $shift => $probability) {
+          $sum += $probability;
+          if ($threshold < $sum) {
+            break;
+          }
+        }
+        $data['stability'][$date]['threshold'][$threshold] =
+            round(exp($shift / 10000), 4);
       }
       $data['stability'][$date]['price'] = $prices[$date];
     }
