@@ -62,24 +62,30 @@ class Stability {
     }
     for ($date = $start_date; $date <= $end_date;
          $date = date('Y-m-d', strtotime($date) + 7 * DAY)) {
-      $price_diffs = [];
-      for ($days_ago = 1; $days_ago <= 52 * 7; $days_ago++) {
-        $base_date = date('Y-m-d',
-                          strtotime($date) - $days_ago * DAY);
-        $past_date = date('Y-m-d',
-                          strtotime($date) - ($days_ago + 7) * DAY);
-        if (!isset($prices[$base_date]) || !isset($prices[$past_date])) {
-          fwrite(STDERR, "Error: start_date=$start_date, " .
-                         "past_date=$past_date\n");
-          exit(1);
+      foreach (['1.0', '1.1', '1.2', '1.3'] as $ratio) {
+        $price_diffs = [];
+        for ($days_ago = 1; $days_ago <= 52 * 7; $days_ago++) {
+          $base_date = date('Y-m-d',
+                            strtotime($date) - $days_ago * DAY);
+          $past_date = date('Y-m-d',
+                            strtotime($date) - ($days_ago + 7) * DAY);
+          if (!isset($prices[$base_date]) || !isset($prices[$past_date])) {
+            fwrite(STDERR, "Error: start_date=$start_date, " .
+                           "past_date=$past_date\n");
+            exit(1);
+          }
+          $price_diffs[] = intval(round(
+              (log($prices[$base_date] / $prices[$past_date]) -
+               log(floatval($ratio)) / 52) * 10000));
         }
-        $price_diffs[] = intval(round(
-            log($prices[$base_date] / $prices[$past_date]) * 10000));
+        file_put_contents(TMPFILE,
+                          "52\n\n" . implode("\n", $price_diffs) . "\n");
+        $output = [];
+        exec('./bin/threshold < ' . TMPFILE, $output);
+        $data['stability'][$date]['ratio'][$ratio] =
+            floatval(implode("\n", $output));
       }
-      file_put_contents(TMPFILE, "52\n\n" . implode("\n", $price_diffs) . "\n");
-      $output = [];
-      exec('./bin/threshold < ' . TMPFILE, $output);
-      $data['stability'][$date] = floatval(implode("\n", $output));
+      $data['stability'][$date]['price'] = $prices[$date];
     }
     return $data;
   }
